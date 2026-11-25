@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>キャリア採用ATS 運用の手引き</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+JP:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* 設計方針: 左に2つのリスト(固定表示)、右に Power Automate のフロー図。リストを操作すると通った経路が青で点灯する。アクションの左帯は操作対象リストの色(青緑=他部門連携用／橙=候補者管理)。 */
+:root{
+  --bg:#edf0f3; --grid:rgba(16,28,40,.045); --surface:#ffffff; --sunk:#f4f6f8;
+  --ink:#0d1822; --muted:#5a6876; --line:#cfd7de;
+  --dept:#0b8a80; --dept-soft:#dff3f0; --mst:#c05a12; --mst-soft:#fcebdc;
+  --run:#2458d6; --run-soft:#e3ebfd; --halt:#c13932; --halt-soft:#fbe6e4; --yes:#1f7a45; --flash:#fff0a6;
+  --sans:"IBM Plex Sans JP","Hiragino Sans","Yu Gothic",Meiryo,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#080d12; --grid:rgba(160,190,215,.05); --surface:#0f171e; --sunk:#0b1218;
+    --ink:#e3ebf1; --muted:#8495a3; --line:#253340;
+    --dept:#4fd6c6; --dept-soft:#0f2e2c; --mst:#f3a160; --mst-soft:#33230f;
+    --run:#86a9ff; --run-soft:#16264d; --halt:#f2857e; --halt-soft:#3a1c1a; --yes:#6fd198; --flash:#4f4410; color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#080d12; --grid:rgba(160,190,215,.05); --surface:#0f171e; --sunk:#0b1218;
+  --ink:#e3ebf1; --muted:#8495a3; --line:#253340;
+  --dept:#4fd6c6; --dept-soft:#0f2e2c; --mst:#f3a160; --mst-soft:#33230f;
+  --run:#86a9ff; --run-soft:#16264d; --halt:#f2857e; --halt-soft:#3a1c1a; --yes:#6fd198; --flash:#4f4410; color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px);background-size:24px 24px;
+  color:var(--ink);font-family:var(--sans);font-size:14px;line-height:1.7}
+.wrap{max-width:1120px;margin:0 auto;padding:20px 16px 64px;display:flex;flex-direction:column;gap:16px}
+h1,h2,h3,p{margin:0}
+button,select{font:inherit;color:inherit}
+button{cursor:pointer}
+button:focus-visible,select:focus-visible{outline:2px solid var(--run);outline-offset:2px}
+.box{background:var(--surface);border:1px solid var(--line);border-radius:6px}
+.kick{font-family:var(--mono);font-size:11px;letter-spacing:.08em;color:var(--muted)}
+h1{font-size:21px;font-weight:700}
+.lead{color:var(--muted);max-width:60em;font-size:13.5px}
+.legend{display:flex;flex-wrap:wrap;gap:4px 16px;font-size:12px;color:var(--muted)}
+.legend i{display:inline-block;width:4px;height:12px;border-radius:1px;margin-right:6px;vertical-align:-1px}
+
+.main{display:grid;grid-template-columns:372px minmax(0,1fr);gap:14px;align-items:start}
+.side{position:sticky;top:10px;display:flex;flex-direction:column;gap:10px}
+@media (max-width:860px){.main{grid-template-columns:minmax(0,1fr)}.side{position:static}}
+
+.lst{overflow:hidden}
+.lst .hd{display:flex;justify-content:space-between;align-items:baseline;gap:8px;padding:7px 10px;border-bottom:1px solid var(--line);border-left:4px solid}
+.lst.dept .hd{border-left-color:var(--dept)} .lst.mst .hd{border-left-color:var(--mst)}
+.lst .hd b{font-size:13.5px} .lst .hd span{font-size:11px;color:var(--muted)}
+.tscroll{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:12.5px}
+th{font-family:var(--mono);font-size:10px;font-weight:500;color:var(--muted);text-align:left;padding:5px 5px;white-space:nowrap}
+td{padding:4px 5px;border-top:1px solid var(--line);white-space:nowrap}
+th:first-child,td:first-child{padding-left:10px}
+tr.hl td{background:var(--flash)}
+td select{border:1px solid var(--line);background:var(--surface);border-radius:4px;padding:1px 0;font-size:12px;max-width:100%}
+td select.manual{border-color:var(--mst);color:var(--mst);background:var(--mst-soft);font-weight:600}
+.add{margin:8px 10px;border:1px solid var(--line);background:var(--sunk);border-radius:4px;padding:2px 10px;font-size:12px}
+.add:disabled{opacity:.4;cursor:default}
+.side.busy select,.side.busy .add{pointer-events:none;opacity:.5}
+.trace{padding:10px 12px;display:flex;flex-direction:column;gap:6px}
+.trace h3{font-family:var(--mono);font-size:10.5px;letter-spacing:.08em;color:var(--muted);font-weight:500}
+#log{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:3px;min-height:330px;font-size:12.5px}
+#log li{display:grid;grid-template-columns:auto 1fr;gap:8px;color:var(--muted)}
+#log li b{font-weight:600;color:var(--ink);white-space:nowrap}
+#log li.now b,#log li.now{color:var(--run)}
+#log li.halt b,#log li.halt{color:var(--halt)}
+#log li.idle{display:block}
+
+.flow{overflow:hidden;min-width:0}
+.tabs{display:flex;border-bottom:1px solid var(--line);background:var(--sunk)}
+.tabs button{flex:1;border:0;background:transparent;padding:9px 12px;text-align:left;border-bottom:2px solid transparent;color:var(--muted);display:flex;flex-direction:column;line-height:1.35}
+.tabs button b{font-size:14px} .tabs button span{font-size:11px}
+.tabs button[aria-selected="true"]{background:var(--surface);color:var(--ink);border-bottom-color:var(--ink)}
+.dg{overflow-x:auto;padding:16px 12px 20px}
+.seq{display:flex;flex-direction:column;align-items:center}
+#dgin{width:max-content;min-width:100%}
+.cn{width:2px;height:14px;background:var(--line);flex:none}
+.act{width:138px;flex:none;border:1px solid var(--line);border-left:4px solid var(--muted);border-radius:5px;background:var(--surface);padding:5px 8px;text-align:left;display:flex;flex-direction:column;line-height:1.35}
+.act .k{font-family:var(--mono);font-size:9.5px;letter-spacing:.05em;color:var(--muted)}
+.act .nm{font-size:12.5px;font-weight:500}
+.act.dept{border-left-color:var(--dept)} .act.mst{border-left-color:var(--mst)}
+.act.cond{background:var(--ink);color:var(--surface);border-color:var(--ink)} .act.cond .k{color:inherit;opacity:.7}
+.act:hover{border-color:var(--ink)}
+.act.done{background:var(--run-soft);border-color:var(--run);color:var(--ink)}
+.act.done .k{color:var(--muted);opacity:1}
+.act.on{background:var(--run);border-color:var(--run);color:#fff;box-shadow:0 0 0 4px var(--run-soft)}
+.act.on .k{color:#fff;opacity:.85}
+.act.halt{background:var(--halt);border-color:var(--halt);color:#fff;box-shadow:0 0 0 4px var(--halt-soft)}
+.act.halt .k{color:#fff;opacity:.85}
+.brs{display:flex;gap:6px;align-items:flex-start}
+.br{border:1px dashed var(--line);border-radius:6px;padding:6px 5px 8px;display:flex;flex-direction:column;align-items:center;min-width:52px}
+.br .bl{font-family:var(--mono);font-size:10.5px;font-weight:600;margin-bottom:6px}
+.br.t .bl{color:var(--yes)} .br.f .bl{color:var(--halt)}
+.br.taken{border:1.5px solid var(--run);background:color-mix(in srgb,var(--run-soft) 45%,transparent)}
+.none{font-size:10.5px;color:var(--muted);padding:2px 0;width:44px;text-align:center;line-height:1.4}
+.loop{border:1px solid var(--line);border-radius:6px;background:var(--sunk);padding:0 6px 8px;display:flex;flex-direction:column;align-items:center}
+.loop .lh{border:0;background:transparent;font-family:var(--mono);font-size:10.5px;color:var(--muted);padding:4px 6px}
+.loop .lh:hover{color:var(--ink);text-decoration:underline}
+.dg.ran .act:not(.done):not(.on):not(.halt){opacity:.4}
+.end{font-family:var(--mono);font-size:10.5px;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:1px 12px;background:var(--surface)}
+
+.keys{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:6px;overflow:hidden}
+.keys div{background:var(--surface);padding:10px 14px;font-size:13px}
+.keys b{display:block;font-size:13.5px}
+.keys span{color:var(--muted)}
+
+/* 吹き出し */
+#tip{position:absolute;z-index:10;width:320px;max-width:calc(100vw - 16px);background:var(--surface);border:1px solid var(--ink);border-radius:8px;padding:14px 16px;display:flex;flex-direction:column;gap:9px;box-shadow:0 12px 36px rgba(8,13,18,.22)}
+#tip[hidden]{display:none}
+#tip::before{content:"";position:absolute;width:12px;height:12px;background:var(--surface);border:1px solid var(--ink);transform:rotate(45deg)}
+#tip.r::before{left:-7px;top:18px;border-right:0;border-top:0}
+#tip.l::before{right:-7px;top:18px;border-left:0;border-bottom:0}
+#tip.d::before{top:-7px;left:24px;border-right:0;border-bottom:0}
+#tip .ph{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
+#tip h2{font-size:15px;font-weight:700;line-height:1.4}
+#tip .x{border:0;background:transparent;font-size:18px;line-height:1;padding:0 2px;color:var(--muted)}
+.chips{display:flex;flex-wrap:wrap;gap:5px}
+.chip{font-size:10.5px;border-radius:3px;padding:0 7px;border:1px solid var(--line);color:var(--muted)}
+.chip.dept{border-color:var(--dept);color:var(--dept)} .chip.mst{border-color:var(--mst);color:var(--mst)}
+#tip .role{font-size:13.5px}
+.kv{display:grid;grid-template-columns:max-content 1fr;gap:3px 12px;font-size:12.5px;margin:0}
+.kv dt{color:var(--muted)} .kv dd{margin:0;word-break:break-word}
+#tip ol{margin:0;padding-left:1.4em;font-size:12.5px;color:var(--muted)}
+.unk{border-left:3px solid var(--halt);background:var(--halt-soft);padding:5px 9px;font-size:12px;border-radius:0 4px 4px 0}
+.sup{font-size:12px;color:var(--muted)}
+/* まとまり */
+.grp{width:190px;flex:none;border:1.5px solid var(--ink);border-radius:8px;background:var(--surface);padding:7px 10px;text-align:left;display:flex;flex-direction:column;line-height:1.4}
+.grp .k{font-family:var(--mono);font-size:9.5px;letter-spacing:.05em;color:var(--muted)}
+.grp .nm{font-size:13.5px;font-weight:700}
+.grp .ds{font-size:11.5px;color:var(--muted)}
+.grp.done{background:var(--run-soft);border-color:var(--run)}
+.grp.on{background:var(--run);border-color:var(--run);color:#fff;box-shadow:0 0 0 4px var(--run-soft)}
+.grp.on .k,.grp.on .ds{color:#fff;opacity:.9}
+.grp.halt{background:var(--halt);border-color:var(--halt);color:#fff}
+.gbox{border:1.5px solid var(--ink);border-radius:8px;padding:0 6px 8px;display:flex;flex-direction:column;align-items:center;background:var(--surface)}
+.gbox{min-width:158px}
+.gbox .gh{border:0;background:transparent;padding:6px 6px 7px;display:flex;flex-direction:column;align-items:center;line-height:1.35;width:100%}
+.gbox .gh b{font-size:13.5px;font-weight:700}
+.gbox .gh span{font-size:11px;color:var(--muted)}
+.gbox .gh .td{color:var(--ink);font-weight:600;margin-top:3px;border-top:1px dashed var(--line);padding-top:3px;width:100%}
+.lgrid .gbox .gh{align-items:flex-start;text-align:left}
+.lgrid .gbox .gh b{font-size:14px}
+.lgrid .gbox .gh span{font-size:12px}
+.linkbtn{align-self:flex-start;border:1px solid var(--ink);background:var(--surface);border-radius:4px;padding:5px 14px;font-size:12.5px;font-weight:600}
+.gbox .gh:hover b{text-decoration:underline}
+.gbox.done{background:color-mix(in srgb,var(--run-soft) 40%,var(--surface))}
+.gbox.on{box-shadow:0 0 0 3px var(--run-soft)}
+.gbox.done,.gbox.on{border-color:var(--run)}
+.act.cond .qs{font-size:11px;opacity:.85}
+.dg.ran .grp:not(.done):not(.on):not(.halt){opacity:.4}
+.vt{display:flex;gap:0;padding:10px 12px 0}
+.vt button{border:1px solid var(--line);background:var(--surface);padding:3px 12px;font-size:12px;color:var(--muted)}
+.vt button:first-child{border-radius:4px 0 0 4px} .vt button:last-child{border-radius:0 4px 4px 0;border-left:0}
+.vt button[aria-pressed="true"]{background:var(--ink);color:var(--surface);border-color:var(--ink)}
+.jump{display:flex;gap:1px;background:var(--line);border:1px solid var(--line);border-radius:6px;overflow:hidden;align-self:flex-start;flex-wrap:wrap}
+.jump a{background:var(--surface);padding:5px 14px;font-size:12.5px;color:var(--ink);text-decoration:none;font-weight:600}
+.jump a:hover{background:var(--ink);color:var(--surface)}
+.sec{display:flex;flex-direction:column;gap:12px;scroll-margin-top:10px}
+.sec>h2{font-size:18px;font-weight:700;display:flex;align-items:center;gap:12px}
+.sec>h2::after{content:"";flex:1;height:1px;background:var(--line)}
+.sec h3{font-size:14.5px;font-weight:700}
+.note{font-size:12.5px;color:var(--muted);max-width:62em}
+.steps{margin:0;padding:0;list-style:none;display:grid;gap:1px;background:var(--line);border:1px solid var(--line);border-radius:6px;overflow:hidden;counter-reset:st}
+.steps li{background:var(--surface);padding:9px 14px 9px 46px;position:relative;counter-increment:st;font-size:13.5px}
+.steps li::before{content:counter(st);position:absolute;left:14px;top:9px;width:22px;height:22px;border-radius:50%;background:var(--ink);color:var(--surface);font-family:var(--mono);font-size:11px;display:grid;place-items:center}
+.steps li span{display:block;color:var(--muted);font-size:12.5px}
+.tbl{overflow-x:auto}
+.tbl table{font-size:13px}
+.tbl th{font-family:var(--sans);font-size:11.5px;padding:7px 10px;background:var(--sunk)}
+.tbl td{padding:7px 10px;white-space:normal;vertical-align:top}
+.tbl td:first-child{white-space:nowrap;font-weight:600}
+.tbl td.m{font-family:var(--mono);font-size:11.5px;color:var(--muted)}
+.lgrid{display:grid;grid-template-columns:repeat(2,236px);gap:8px;align-items:stretch}
+.lgrid .gbox{width:236px}
+.stgs{display:flex;flex-direction:column;align-items:center}
+.stg{display:flex;flex-direction:column;gap:6px;align-items:flex-start;width:480px;max-width:100%}
+.sl{font-size:13px;font-weight:700;display:flex;align-items:center;gap:8px}
+.sl span{width:20px;height:20px;border-radius:50%;background:var(--ink);color:var(--surface);font-family:var(--mono);font-size:11px;display:grid;place-items:center}
+@media (max-width:640px){.lgrid{grid-template-columns:236px}.stg{width:236px}}
+.lgrid .gbox{min-width:0}
+.tabs button{min-width:0}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header style="display:flex;flex-direction:column;gap:6px">
+    <span class="kick">SYSTEM MANUAL</span>
+    <h1>キャリア採用ATS 運用の手引き</h1>
+    <p class="lead">求人部門が閲覧する「他部門連携用リスト」と、採用課のマスタ「候補者管理リスト」を、Power Automate のフロー2本で相互に同期し、もう1本のフローで入力漏れをメールで知らせています。左のリストを操作すると、右のフロー図で実行経路が点灯します。太枠は目的ごとのまとまり、その中が個々のアクションです。どちらも押すと、横に説明を表示します。全求人で同一の構成です。</p>
+    <nav class="jump"><a href="#flow">しくみ</a><a href="#daily">日常の作業</a><a href="#change">改修手順</a></nav>
+    <div class="legend">
+      <span><i style="background:var(--dept)"></i>他部門連携用リストを操作するアクション</span>
+      <span><i style="background:var(--mst)"></i>候補者管理リストを操作するアクション</span>
+      <span><i style="background:var(--muted)"></i>変数・条件</span>
+      <span><i style="background:var(--run)"></i>実行された経路</span>
+    </div>
+  </header>
+
+  <div class="main" id="flow">
+    <div class="side" id="side">
+      <div class="box lst dept"><div class="hd"><b>他部門連携用リスト</b><span>求人部門が閲覧</span></div>
+        <div class="tscroll"><table id="tl"></table></div><button class="add" id="add">＋ 候補者を追加</button></div>
+      <div class="box lst mst"><div class="hd"><b>候補者管理リスト</b><span>採用課マスタ</span></div>
+        <div class="tscroll"><table id="tr"></table></div><button class="add" id="add-m">＋ 候補者を追加</button></div>
+      <div class="box trace"><h3>実行ログ</h3><ol id="log"></ol></div>
+    </div>
+
+    <div class="box flow">
+      <div class="tabs" role="tablist">
+        <button role="tab" id="tab-1"><b>個別⇒マスタ</b><span>他部門連携用リスト → 候補者管理リスト</span></button>
+        <button role="tab" id="tab-2"><b>マスタ⇒個別</b><span>候補者管理リスト → 他部門連携用リスト</span></button>
+        <button role="tab" id="tab-3"><b>リマインド</b><span>平日 9:30 にメール送信</span></button>
+      </div>
+            <div class="dg" id="dg"></div>
+    </div>
+  </div>
+
+  <section class="sec" id="daily">
+    <h2>日常の作業</h2>
+    <h3>面接対応者が行うこと</h3>
+    <ol class="steps">
+      <li>一次面接の合否を入力する</li>
+      <li>最終面接の合否を入力する<span>合格の場合は、内定欄を「決裁取得中」にする</span></li>
+      <li>候補者管理リストで入力・変更したら、UpdatedByFlow で「手動変更済」を選択する<span>選択したときだけ、他部門連携用リストへ反映されます。反映後は「自動更新済」に戻ります。</span></li>
+      <li>リマインドメールが届いたら、対象者の入力を漏れなく行う</li>
+    </ol>
+    <h3>リマインドメールが送られる条件</h3>
+    <p class="note">フロー「キャリア採用ATS-リマインド」が、平日 9:30 に候補者管理リストの全項目を確認し、該当する候補者ごとにメールを送ります。条件に該当する間は毎朝届きます。7つの条件と必要な対応は、上のフロー図の「リマインド」タブにまとめています。</p>
+    <button class="linkbtn" id="go-remind">リマインドのフロー図で条件と対応を見る</button>
+    <h3>同期の決まり</h3>
+    <div class="keys">
+      <div><b>照合は志望者の名前（タイトル列）</b><span>名前が一致する項目を同一候補者として更新し、一致しなければ新規に作成します。</span></div>
+      <div><b>添付ファイルは置き換え</b><span>反映先の添付ファイルを削除し、反映元の添付ファイルを追加します。</span></div>
+    </div>
+  </section>
+
+  <section class="sec" id="change">
+    <h2>改修手順</h2>
+    <h3>求人を追加するとき</h3>
+    <p class="note">他部門連携用リストの追加と、2本のフローの新規立ち上げは、担当組織が対応しています。</p>
+    <ol class="steps">
+      <li>他部門連携用のサイトに、その求人のリストを新しく作成する<span>フローが列を参照するため、列の構成は既存の他部門連携用リストと同じにします。</span></li>
+      <li>候補者管理リストの「求人名」に、その求人名を追加する</li>
+      <li>「個別⇒マスタ」「マスタ⇒個別」の2本のフローを、その求人用に作成する<span>求人ごとに異なる設定は下表のとおりです。</span></li>
+    </ol>
+    <div class="box tbl"><table>
+      <thead><tr><th>フロー</th><th>求人ごとに変える設定</th><th>該当するアクション</th></tr></thead>
+      <tbody>
+        <tr><td rowspan="2">個別⇒マスタ</td><td>リスト名を新しいリストにする</td><td class="m">トリガー／添付ファイルの取得／添付ファイルのコンテンツの取得／添付ファイルの取得 3／添付ファイルのコンテンツの取得 2</td></tr>
+        <tr><td>「求人名 Value」を新しい求人名にする</td><td class="m">項目の作成 2／項目の更新</td></tr>
+        <tr><td rowspan="2">マスタ⇒個別</td><td>リスト名を新しいリストにする</td><td class="m">複数の項目の取得／項目の作成／項目の更新／添付ファイルの取得 3／添付ファイルの削除 2／添付ファイルの追加 2</td></tr>
+        <tr><td>判定する求人名を新しい求人名にする</td><td class="m">条件 3</td></tr>
+      </tbody></table></div>
+    <p class="note">リマインドのフローは候補者管理リスト全体を確認しているため、求人を追加しても変更は不要です。</p>
+    <h3>担当者が変わったとき</h3>
+    <ol class="steps">
+      <li>フロー「キャリア採用ATS-リマインド」を開き、メール送信アクションの宛先から外れる担当者を削除し、新しい担当者を追加する<span>メール送信アクションは7つあり、宛先はそれぞれに設定されています。7つすべてを変更します。</span></li>
+    </ol>
+    <div class="box tbl"><table>
+      <thead><tr><th>条件</th><th>メール送信アクション（フロー上の表示名）</th></tr></thead>
+      <tbody>
+        <tr><td>申込日の入力確認</td><td class="m">メールの送信 (V2) 5</td></tr>
+        <tr><td>一次面接日の設定確認</td><td class="m">メールの送信 (V2)</td></tr>
+        <tr><td>一次面接の合否確認</td><td class="m">Send an email (V2)</td></tr>
+        <tr><td>最終面接日の設定確認（要修正）</td><td class="m">メールの送信 (V2) 2</td></tr>
+        <tr><td>最終面接の合否確認</td><td class="m">メールの送信 (V2) 3</td></tr>
+        <tr><td>決裁取得状況の確認</td><td class="m">メールの送信 (V2) 4</td></tr>
+        <tr><td>内定受諾状況の確認</td><td class="m">メールの送信 (V2) 6</td></tr>
+      </tbody></table></div>
+    <p class="note">各フローの SharePoint の接続は、フロー作成者のアカウントです。作成者が担当を外れる場合は、各アクションの接続も変更が必要です。</p>
+  </section>
+</div>
+
+<div id="tip" role="dialog" hidden></div>
+
+<script>
+const $=s=>document.querySelector(s);
+const h=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const LI='他部門連携用リスト',MA='候補者管理リスト';
+const COLS_M='タイトル／採用担当者／求人名（求人ごとの固定値）／一次面接／最終面接／内定／内定打診日／配属課／申込日／一次面接日／最終面接日／UpdatedByFlow（固定値：自動更新済）';
+const COLS_D='タイトル／一次面接／最終面接／内定／内定打診日／配属部署／採用担当者／申込日／一次面接日／最終面接日';
+const LOOPQ='繰り返しの対象（入力）は設定画面で未確認です。';
+
+/* ---------- アクション情報（設定画面に基づく） ---------- */
+const MAILBODY='本文には対象者の氏名と求人名を記載し、候補者管理リストでの入力と「手動変更済」の選択を依頼します。';
+const INFO={
+ /* リマインド */
+ r_trg:{nm:'繰り返し',k:'トリガー',role:'決まった日時にフローを開始します。',kv:[['実行','月〜金曜日の 9:30（日本時間）'],['フロー上の表示名','Recurrence']]},
+ r_get:{nm:'複数の項目の取得',k:'SharePoint',side:'mst',role:'候補者管理リストの項目をすべて取得します。全求人の候補者が対象です。',kv:[['対象リスト',MA],['上から順に取得','5000']]},
+ r_loop:{nm:'Apply to each',k:'繰り返し',role:'取得した候補者1人ずつに、7つの確認を順に行います。'},
+ r_c1:{nm:'申込日の入力確認',k:'条件',role:'申込日が入力されていない候補者を見つけます。',kv:[['条件','申込日が空']]},
+ r_m1:{nm:'メールの送信 (V2) 5',k:'Outlook',role:'件名「申込日の入力がされていません（キャリア採用）」のメールを送ります。'+MAILBODY},
+ r_c2:{nm:'一次面接日の設定確認',k:'条件',role:'申込から日数が経っても一次面接日が決まっていない候補者を見つけます。',kv:[['条件 1','一次面接日が空'],['条件 2','申込日が入力済み'],['条件 3','申込日から14日を超えた'],['条件 4','一次面接の合否が空']]},
+ r_m2:{nm:'メールの送信 (V2)',k:'Outlook',role:'一次面接日の入力を依頼するメールを送ります。'},
+ r_c3:{nm:'一次面接の合否確認',k:'条件',role:'一次面接が終わっても合否が入力されていない候補者を見つけます。',kv:[['条件 1','一次面接の合否が空'],['条件 2','一次面接日が入力済み'],['条件 3','一次面接日から3日を超えた']]},
+ r_m3:{nm:'メールの送信 (V2)',k:'Outlook',role:'件名「一次面接後の合否決定が遅れています（キャリア採用）」のメールを送ります。'+MAILBODY,kv:[['フロー上の表示名','Send an email (V2)']]},
+ r_c4:{nm:'最終面接日の設定確認（要修正）',k:'条件',role:'一次面接に合格したのに、最終面接日が決まっていない候補者を見つけます。',kv:[['条件 1','最終面接日が空'],['条件 2','一次面接の合否が「合格」'],['条件 3','申込日が入力済み'],['条件 4','一次面接日から14日を超えた'],['条件 5','最終面接の合否が空']]},
+ r_m4:{nm:'メールの送信 (V2) 2',k:'Outlook',role:'最終面接日の入力を依頼するメールを送ります。'},
+ r_c5:{nm:'最終面接の合否確認',k:'条件',role:'最終面接が終わっても合否が入力されていない候補者を見つけます。',kv:[['条件 1','最終面接の合否が空'],['条件 2','最終面接日が入力済み'],['条件 3','最終面接日から3日を超えた'],['条件 4','一次面接の合否が「合格」']]},
+ r_m5:{nm:'メールの送信 (V2) 3',k:'Outlook',role:'最終面接の合否の入力を依頼するメールを送ります。'},
+ r_c6:{nm:'決裁取得状況の確認',k:'条件',role:'内定欄が「決裁取得中」のまま進んでいない候補者を見つけます。',kv:[['条件 1','内定が「決裁取得中」'],['条件 2','「決裁取得中」になってから7日を超えた']]},
+ r_m6:{nm:'メールの送信 (V2) 4',k:'Outlook',role:'決裁取得状況の確認を依頼するメールを送ります。'},
+ r_c7:{nm:'内定受諾状況の確認',k:'条件',role:'内定を打診したまま回答が確認できていない候補者を見つけます。',kv:[['条件 1','内定が「内定打診中」'],['条件 2','内定打診日から7日を超えた']]},
+ r_m7:{nm:'メールの送信 (V2) 6',k:'Outlook',role:'内定受諾状況の確認を依頼するメールを送ります。'},
+ /* 個別⇒マスタ */
+ a_trg:{nm:'項目が作成または変更されたとき',k:'トリガー',side:'dept',role:'他部門連携用リストで項目が作成または変更されると、このフローを開始します。',kv:[['対象リスト',LI],['フロー上の表示名','When an item is created or modified'],['トリガー条件','なし']]},
+ a_init:{nm:'変数を初期化する',k:'変数',role:'照合結果の件数を入れる変数「件数」を用意します。',kv:[['名前','件数'],['タイプ','整数'],['値','（空欄）']]},
+ a_get:{nm:'複数の項目の取得',k:'SharePoint',side:'mst',role:'候補者管理リストから、タイトルが同じ項目を取得します。同じ候補者がすでに登録されているかを調べる処理です。',kv:[['対象リスト',MA],['フィルター クエリ',"Title eq '［タイトル］'"]]},
+ a_set:{nm:'変数の設定',k:'変数',role:'取得した項目の件数を、変数「件数」に入れます。',kv:[['名前','件数'],['値',"length(outputs('複数の項目の取得')?['body/value'])"]]},
+ a_cond:{q:'候補者管理リストに未登録か',nm:'条件',k:'条件',role:'候補者管理リストに同じタイトルの項目があるかで分岐します。',kv:[['判定','件数　より小さい　1'],['True','同じタイトルがない → 項目を作成'],['False','同じタイトルがある → 項目を更新']]},
+ a_create:{nm:'項目の作成 2',k:'SharePoint',side:'mst',role:'候補者管理リストに、新しい項目を作成します。',kv:[['対象リスト',MA],['設定する列',COLS_M]]},
+ a_ag1:{nm:'添付ファイルの取得',k:'SharePoint',side:'dept',role:'他部門連携用リストの項目に付いている添付ファイルの一覧を取得します。',kv:[['対象リスト',LI]]},
+ a_l3:{nm:'Apply to each 3',k:'繰り返し',role:'中の2つのアクションを繰り返します。',unk:LOOPQ},
+ a_ac1:{nm:'添付ファイルのコンテンツの取得',k:'SharePoint',side:'dept',role:'他部門連携用リストの添付ファイルの中身を取得します。',kv:[['対象リスト',LI]]},
+ a_aa1:{nm:'添付ファイルの追加',k:'SharePoint',side:'mst',role:'取得した中身を、候補者管理リストの項目に添付ファイルとして追加します。',kv:[['対象リスト',MA],['ファイル名','［DisplayName］'],['ファイル コンテンツ','［本文］']]},
+ a_l2:{nm:'Apply to each 2',k:'繰り返し',role:'候補者管理リストで見つかった項目ごとに、中の処理（条件 2 以下）を繰り返します。',kv:[['入力','複数の項目の取得の結果（body/value）']]},
+ a_cond2:{q:'候補者管理リスト側が「手動変更済」か',nm:'条件 2',k:'条件',role:'候補者管理リスト側の項目の UpdatedByFlow が「手動変更済」の間は、上書きしません。「マスタ⇒個別」が反映している最中の項目を、このフローが書き戻さないための判定です。',kv:[['判定','UpdatedByFlow　等しい　手動変更済'],['True','アクションなし'],['False','上書きと添付ファイルの入れ替え']]},
+ a_l1:{nm:'Apply to each',k:'繰り返し',role:'候補者管理リストで見つかった項目ごとに、上書きと添付ファイルの入れ替えを繰り返します。',kv:[['入力','複数の項目の取得の結果（body/value）']],sup:'外側の Apply to each 2 と同じ入力です。'},
+ a_upd:{nm:'項目の更新',k:'SharePoint',side:'mst',role:'候補者管理リストの既存の項目を、他部門連携用リストの内容で上書きします。',kv:[['対象リスト',MA],['設定する列',COLS_M]]},
+ a_ag2:{nm:'添付ファイルの取得 2',k:'SharePoint',side:'mst',role:'候補者管理リストの項目に、現在付いている添付ファイルの一覧を取得します。',kv:[['対象リスト',MA]]},
+ a_l4:{nm:'Apply to each 4',k:'繰り返し',role:'中の削除アクションを繰り返します。',unk:LOOPQ},
+ a_del:{nm:'添付ファイルの削除',k:'SharePoint',side:'mst',role:'候補者管理リストの項目から、添付ファイルを削除します。',kv:[['対象リスト',MA]]},
+ a_ag3:{nm:'添付ファイルの取得 3',k:'SharePoint',side:'dept',role:'他部門連携用リストの項目に付いている添付ファイルの一覧を取得します。',kv:[['対象リスト',LI]]},
+ a_l5:{nm:'Apply to each 5',k:'繰り返し',role:'中の2つのアクションを繰り返します。',unk:LOOPQ},
+ a_ac2:{nm:'添付ファイルのコンテンツの取得 2',k:'SharePoint',side:'dept',role:'他部門連携用リストの添付ファイルの中身を取得します。',kv:[['対象リスト',LI]]},
+ a_aa2:{nm:'添付ファイルの追加',k:'SharePoint',side:'mst',role:'取得した中身を、候補者管理リストの項目に添付ファイルとして追加します。',kv:[['対象リスト',MA],['フロー上の表示名','Add attachment'],['ファイル名','［DisplayName］'],['ファイル コンテンツ','［本文］']]},
+ /* マスタ⇒個別 */
+ b_trg:{nm:'項目が作成または変更されたとき',k:'トリガー',side:'mst',role:'候補者管理リストで項目が作成または変更されると、このフローを開始します。',kv:[['対象リスト',MA],['フロー上の表示名','When an item is created or modified'],['トリガー条件','なし']],sup:'「個別⇒マスタ」による書き込みでも開始しますが、その場合は UpdatedByFlow が「自動更新済」のため、条件 2 で終了します。'},
+ b_init:{nm:'変数を初期化する',k:'変数',role:'照合結果の件数を入れる変数「件数」を用意します。',kv:[['名前','件数'],['タイプ','整数'],['値','（空欄）']]},
+ b_get:{nm:'複数の項目の取得',k:'SharePoint',side:'dept',role:'他部門連携用リストから、タイトルが同じ項目を取得します。',kv:[['対象リスト',LI],['フィルター クエリ',"Title eq '［タイトル］'"]]},
+ b_set:{nm:'変数の設定',k:'変数',role:'取得した項目の件数を、変数「件数」に入れます。',kv:[['名前','件数'],['値',"length(outputs('複数の項目の取得')?['body/value'])"]]},
+ b_cond2:{q:'「手動変更済」か',nm:'条件 2',k:'条件',role:'人が手動で変更した項目かどうかを、UpdatedByFlow の値で判定します。',kv:[['判定','UpdatedByFlow　等しい　手動変更済'],['True','続行'],['False','アクションなし（終了）']]},
+ b_cond:{q:'他部門連携用リストに未登録か',nm:'条件',k:'条件',role:'他部門連携用リストに同じタイトルの項目があるかで分岐します。',kv:[['判定','件数　より小さい　1'],['True','同じタイトルがない'],['False','同じタイトルがある → 項目を更新']]},
+ b_cond3:{q:'この求人の候補者か',nm:'条件 3',k:'条件',role:'候補者管理リストの項目の求人名が、このフローの担当求人と一致する場合だけ、他部門連携用リストに項目を作成します。ほかの求人の候補者では何もしません。',kv:[['判定','求人名　等しい　（このフローの担当求人名）'],['True','項目の作成'],['False','アクションなし']]},
+ b_create:{nm:'項目の作成',k:'SharePoint',side:'dept',role:'他部門連携用リストに、新しい項目を作成します。設定するのはタイトルと申込日だけです。',kv:[['対象リスト',LI],['設定する列','タイトル／申込日']]},
+ b_upd3:{nm:'項目の更新 3',k:'SharePoint',side:'mst',role:'候補者管理リストの UpdatedByFlow を「自動更新済」に戻します。',kv:[['対象リスト',MA],['設定する列','UpdatedByFlow（固定値：自動更新済）']]},
+ b_l1:{nm:'Apply to each',k:'繰り返し',role:'他部門連携用リストで見つかった項目ごとに、上書きと添付ファイルの入れ替えを繰り返します。',kv:[['入力','複数の項目の取得の結果（body/value）']]},
+ b_upd:{nm:'項目の更新',k:'SharePoint',side:'dept',role:'他部門連携用リストの既存の項目を、候補者管理リストの内容で上書きします。',kv:[['対象リスト',LI],['設定する列',COLS_D]]},
+ b_ag3:{nm:'添付ファイルの取得 3',k:'SharePoint',side:'dept',role:'他部門連携用リストの項目に、現在付いている添付ファイルの一覧を取得します。',kv:[['対象リスト',LI]]},
+ b_l4:{nm:'Apply to each 4',k:'繰り返し',role:'中の削除アクションを繰り返します。',unk:LOOPQ},
+ b_del:{nm:'添付ファイルの削除 2',k:'SharePoint',side:'dept',role:'他部門連携用リストの項目から、添付ファイルを削除します。',kv:[['対象リスト',LI]]},
+ b_ag1:{nm:'添付ファイルの取得',k:'SharePoint',side:'mst',role:'候補者管理リストの項目に付いている添付ファイルの一覧を取得します。',kv:[['対象リスト',MA]]},
+ b_l2:{nm:'Apply to each 2',k:'繰り返し',role:'中の2つのアクションを繰り返します。',unk:LOOPQ},
+ b_ac2:{nm:'添付ファイルのコンテンツの取得 2',k:'SharePoint',side:'mst',role:'候補者管理リストの添付ファイルの中身を取得します。',kv:[['対象リスト',MA]]},
+ b_aa2:{nm:'添付ファイルの追加 2',k:'SharePoint',side:'dept',role:'取得した中身を、他部門連携用リストの項目に添付ファイルとして追加します。',kv:[['対象リスト',LI],['ファイル名','［DisplayName］'],['ファイル コンテンツ','［本文］']]},
+ b_upd2:{nm:'項目の更新 2',k:'SharePoint',side:'mst',role:'候補者管理リストの UpdatedByFlow を「自動更新済」に戻します。次に手動で変更したときに、再び反映できる状態にする処理です。',kv:[['対象リスト',MA],['設定する列','UpdatedByFlow（固定値：自動更新済）']]}
+};
+/* ---------- まとまり（複数アクションの目的単位） ---------- */
+const GRP={
+ r_g0:{nm:'起動',ds:'平日 9:30',role:'月〜金曜日の 9:30 に、フローを開始します。'},
+ r_g1:{nm:'全候補者を取得',ds:'候補者管理リスト',role:'候補者管理リストの項目をすべて取得します。求人ごとの区別はなく、全求人の候補者が対象です。'},
+ r_k1:{nm:'申込日',ds:'申込日が未入力',todo:'申込日を入力',role:'申込日が未入力の候補者について、入力を依頼するメールを送ります。'},
+ r_k2:{nm:'一次面接日',ds:'申込日から14日を超えても未入力',todo:'一次面接日を入力',role:'申込日から14日を超えても一次面接日が未入力の候補者について、メールを送ります。'},
+ r_k3:{nm:'一次面接の合否',ds:'一次面接日から3日を超えても未入力',todo:'合否を入力',role:'一次面接日から3日を超えても合否が未入力の候補者について、メールを送ります。'},
+ r_k4:{nm:'最終面接日',ds:'一次面接が合格で、一次面接日から14日を超えても未入力',todo:'最終面接日を入力',role:'一次面接が合格で、一次面接日から14日を超えても最終面接日が未入力の候補者について、メールを送ります。'},
+ r_k5:{nm:'最終面接の合否',ds:'最終面接日から3日を超えても未入力',todo:'合否を入力。合格の場合は内定欄を「決裁取得中」に',role:'最終面接日から3日を超えても合否が未入力の候補者について、メールを送ります。'},
+ r_k6:{nm:'決裁取得状況',ds:'内定欄が「決裁取得中」になってから7日を超えた',todo:'内定欄を更新',role:'内定欄が「決裁取得中」になってから7日を超えた候補者について、メールを送ります。'},
+ r_k7:{nm:'内定受諾状況',ds:'内定欄が「内定打診中」で、内定打診日から7日を超えた',todo:'内定欄を更新',role:'内定欄が「内定打診中」で、内定打診日から7日を超えた候補者について、メールを送ります。'},
+ a_g1:{nm:'起動',ds:'他部門連携用リストの作成・変更',role:'他部門連携用リストで項目が作成または変更されたことをきっかけに、フローを開始します。'},
+ a_g2:{nm:'同じ候補者を探す',ds:'候補者管理リストをタイトルで検索',role:'候補者管理リストに同じタイトルの項目があるかを調べ、見つかった件数を変数「件数」に控えます。次の条件で、新規登録か上書きかを決めるための準備です。'},
+ a_g3:{nm:'候補者管理リストに新規登録',ds:'同じタイトルがない場合',role:'候補者管理リストに項目を作成します。求人名には求人ごとの固定値、UpdatedByFlow には「自動更新済」が入ります。'},
+ a_g4:{nm:'添付ファイルを写す',ds:'他部門連携用 → 候補者管理',role:'他部門連携用リストの添付ファイルを取得し、作成した候補者管理リストの項目に同じ内容で追加します。'},
+ a_g5:{nm:'候補者管理リストを上書き',ds:'同じタイトルがある場合',role:'候補者管理リストの既存の項目を、他部門連携用リストの内容で上書きします。UpdatedByFlow には「自動更新済」が入ります。'},
+ a_g6:{nm:'添付ファイルを入れ替える',ds:'削除してから追加し直す',role:'候補者管理リスト側の添付ファイルを削除し、他部門連携用リストの添付ファイルを追加し直します。候補者管理リスト側だけにあったファイルは残りません。'},
+ b_g1:{nm:'起動',ds:'候補者管理リストの作成・変更',role:'候補者管理リストで項目が作成または変更されたことをきっかけに、フローを開始します。「個別⇒マスタ」による書き込みでも開始します。'},
+ b_g2:{nm:'同じ候補者を探す',ds:'他部門連携用リストをタイトルで検索',role:'他部門連携用リストに同じタイトルの項目があるかを調べ、見つかった件数を変数「件数」に控えます。'},
+ b_g3:{nm:'他部門連携用リストに新規登録',ds:'タイトルと申込日を設定',role:'候補者管理リストに追加された候補者を、他部門連携用リストにも登録します。設定するのはタイトルと申込日だけです。'},
+ b_g7:{nm:'状態を戻す',ds:'UpdatedByFlow → 自動更新済',role:'候補者管理リストの UpdatedByFlow を「自動更新済」に戻します。'},
+ b_g4:{nm:'他部門連携用リストを上書き',ds:'同じタイトルがある場合',role:'他部門連携用リストの既存の項目を、候補者管理リストの内容で上書きします。'},
+ b_g5:{nm:'添付ファイルを入れ替える',ds:'削除してから追加し直す',role:'他部門連携用リスト側の添付ファイルを削除し、候補者管理リストの添付ファイルを追加し直します。他部門連携用リスト側だけにあったファイルは残りません。'},
+ b_g6:{nm:'状態を戻す',ds:'UpdatedByFlow → 自動更新済',role:'候補者管理リストの UpdatedByFlow を「自動更新済」に戻します。次に手動で変更したとき、再び反映できる状態にするための処理です。'}
+};
+/* ---------- フローの構造（デザイナーの並びどおり） ---------- */
+const C=(id,t,f)=>({c:id,t,f}),Lp=(id,b)=>({l:id,b}),G=(id,i)=>({g:id,i});
+const TREE={
+ 1:[G('a_g1',['a_trg']),G('a_g2',['a_init','a_get','a_set']),C('a_cond',
+     [G('a_g3',['a_create']),G('a_g4',['a_ag1',Lp('a_l3',['a_ac1','a_aa1'])])],
+     [Lp('a_l2',[C('a_cond2',[],[Lp('a_l1',[G('a_g5',['a_upd']),G('a_g6',['a_ag2',Lp('a_l4',['a_del']),'a_ag3',Lp('a_l5',['a_ac2','a_aa2'])])])])])])],
+ 2:[G('b_g1',['b_trg']),G('b_g2',['b_init','b_get','b_set']),C('b_cond2',
+     [C('b_cond',[C('b_cond3',[G('b_g3',['b_create']),G('b_g7',['b_upd3'])],[])],
+        [Lp('b_l1',[G('b_g4',['b_upd']),G('b_g5',['b_ag3',Lp('b_l4',['b_del']),'b_ag1',Lp('b_l2',['b_ac2','b_aa2'])])]),G('b_g6',['b_upd2'])])],
+     [])],
+ 3:[G('r_g0',['r_trg']),G('r_g1',['r_get']),{l:'r_loop',stages:[['応募',1],['一次面接',2],['最終面接',2],['内定',2]],b:[1,2,3,4,5,6,7].map(n=>G('r_k'+n,['r_c'+n,'r_m'+n]))}]
+};
+let cur=1,st={},taken={},running=false;const detail=true;
+const leaves=items=>items.flatMap(it=>typeof it==='string'?[it]:it.l?leaves(it.b):it.g?leaves(it.i):[it.c,...leaves(it.t),...leaves(it.f)]);
+function gstate(it){const ids=leaves(it.i);return ids.some(i=>st[i]==='halt')?'halt':ids.some(i=>st[i]==='on')?'on':ids.some(i=>st[i]==='done')?'done':''}
+function actHTML(id){const n=INFO[id],c=n.k==='条件';return `<button class="act ${n.side||''}${c?' cond':''} ${st[id]||''}" data-id="${id}"><span class="k">${n.k}</span><span class="nm">${h(n.nm)}</span>${c&&n.q?`<span class="qs">${h(n.q)}</span>`:''}</button>`}
+function pieces(items){
+  const out=[];
+  items.forEach(it=>{
+    if(typeof it==='string')out.push(actHTML(it));
+    else if(it.g){const g=GRP[it.g],s=gstate(it);
+      out.push(detail?`<div class="gbox ${s}"><button class="gh" data-id="${it.g}"><b>${h(g.nm)}</b><span>${h(g.ds)}</span>${g.todo?`<span class="td">対応：${h(g.todo)}</span>`:''}</button>${seqHTML(it.i)}</div>`
+        :`<button class="grp ${s}" data-id="${it.g}"><span class="k">アクション ${leaves(it.i).length} 件</span><span class="nm">${h(g.nm)}</span><span class="ds">${h(g.ds)}</span></button>`)}
+    else if(it.l){out.push(`<div class="loop"><button class="lh" data-id="${it.l}">↻ 繰り返し（${h(INFO[it.l].nm)}）</button>${it.stages?stagesHTML(it):seqHTML(it.b)}</div>`)}
+    else{const tk=taken[it.c];
+      out.push(actHTML(it.c)+'<i class="cn"></i><div class="brs">'+
+       `<div class="br t${tk==='T'?' taken':''}"><span class="bl">True</span>${seqHTML(it.t)}</div>`+
+       `<div class="br f${tk==='F'?' taken':''}"><span class="bl">False</span>${seqHTML(it.f)}</div></div>`)}
+  });return out;
+}
+function stagesHTML(it){const p=pieces(it.b);let k=0;return '<div class="stgs">'+it.stages.map(([t,n],i)=>{const part=p.slice(k,k+n);k+=n;return `<div class="stg"><div class="sl"><span>${i+1}</span>${h(t)}</div><div class="lgrid">${part.join('')}</div></div>`}).join('<i class="cn"></i>')+'</div>'}
+function seqHTML(items){const p=pieces(items);return p.length?'<div class="seq">'+p.join('<i class="cn"></i>')+'</div>':'<span class="none">アクションなし</span>'}
+function renderFlow(){
+  [1,2,3].forEach(n=>$('#tab-'+n).setAttribute('aria-selected',cur===n));
+  const dg=$('#dg');dg.classList.toggle('ran',Object.keys(st).length>0);
+  dg.innerHTML='<div id="dgin">'+seqHTML(TREE[cur])+'<div class="seq"><i class="cn"></i><span class="end">終了</span></div></div>';fit();
+}
+function fit(){const dg=$('#dg'),inn=$('#dgin');if(!inn)return;inn.style.zoom=1;const av=dg.clientWidth-26,w=inn.scrollWidth;inn.style.zoom=w>av?Math.max(.6,av/w):1}
+addEventListener('resize',fit);
+$('#tab-1').onclick=()=>{if(running)return;cur=1;st={};taken={};closeTip();renderFlow()};
+$('#tab-2').onclick=()=>{if(running)return;cur=2;st={};taken={};closeTip();renderFlow()};
+$('#tab-3').onclick=()=>{if(running)return;cur=3;st={};taken={};closeTip();renderFlow()};
+
+/* ---------- 吹き出し ---------- */
+function findGroup(items,gid){for(const it of items){if(typeof it==='string')continue;if(it.g===gid)return it;const r=findGroup(it.g?it.i:it.l?it.b:[...it.t,...it.f],gid);if(r)return r}return null}
+function openTip(id,el){
+  const tip=$('#tip'),g=GRP[id],n=INFO[id];let html;
+  if(g){const names=leaves(findGroup(TREE[cur],id).i).map(i=>INFO[i].nm);
+    html=`<div class="ph"><h2>${h(g.nm)}</h2><button class="x" id="tip-x" aria-label="閉じる">×</button></div>
+     <p class="role">${h(g.role)}</p>${g.todo?`<dl class="kv"><dt>必要な対応</dt><dd>${h(g.todo)}</dd></dl>`:''}<div class="sup">含まれるアクション</div><ol>${names.map(x=>`<li>${h(x)}</li>`).join('')}</ol>${g.unk?`<div class="unk">${h(g.unk)}</div>`:''}`}
+  else if(n){const sc=n.side?`<span class="chip ${n.side}">${n.side==='dept'?LI:MA}を操作</span>`:'';
+    html=`<div class="ph"><h2>${h(n.nm)}</h2><button class="x" id="tip-x" aria-label="閉じる">×</button></div>
+     <div class="chips"><span class="chip">${n.k}</span>${sc}</div><p class="role">${h(n.role)}</p>
+     ${n.kv?'<dl class="kv">'+n.kv.map(([a,b])=>`<dt>${h(a)}</dt><dd>${h(b)}</dd>`).join('')+'</dl>':''}
+     ${n.sup?`<p class="sup">${h(n.sup)}</p>`:''}${n.unk?`<div class="unk">${h(n.unk)}</div>`:''}`}
+  else return;
+  tip.innerHTML=html;tip.hidden=false;tip.className='';
+  const r=el.getBoundingClientRect(),w=tip.offsetWidth,vw=document.documentElement.clientWidth;let left,top=r.top+scrollY-6,cls;
+  if(r.right+14+w<=vw-8){left=r.right+14+scrollX;cls='r'}
+  else if(r.left-14-w>=8){left=r.left-14-w+scrollX;cls='l'}
+  else{left=Math.max(8,Math.min(r.left+scrollX,vw-w-8));top=r.bottom+scrollY+12;cls='d'}
+  tip.className=cls;tip.style.left=left+'px';tip.style.top=top+'px';
+}
+function closeTip(){$('#tip').hidden=true}
+$('#dg').onclick=e=>{const b=e.target.closest('[data-id]');if(b){e.stopPropagation();openTip(b.dataset.id,b)}};
+document.addEventListener('click',e=>{if(e.target.id==='tip-x'||!e.target.closest('#tip'))closeTip()});
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeTip()});
+
+/* ---------- リスト（ダミーデータ） ---------- */
+const O1=['','合格','不合格','辞退'],O2=['','決裁取得中','受諾'],OF=['自動更新済','手動変更済'];
+const L=[{n:'山田 太郎',i1:'合格',of:'決裁取得中'},{n:'佐藤 花子',i1:'',of:''},{n:'鈴木 一郎',i1:'不合格',of:''}];
+const R=L.map(r=>({...r,flag:'自動更新済'}));
+const NEW=['高橋 健','伊藤 美咲'],NEWM=['渡辺 翔','中村 葵'];let added=0,addedM=0,hlL=null,hlR=null;
+let logs=[{idle:true,t:'リストの値を変更すると、実行されたアクションがここに順に記録されます。'}];
+function sel(id,opts,val,cls,fn){return `<select id="${id}" class="${cls}" data-fn="${fn}" aria-label="${fn}">`+opts.map(o=>`<option${o===val?' selected':''} value="${o}">${o||'（未入力）'}</option>`).join('')+'</select>'}
+function renderLists(){
+  $('#tl').innerHTML='<thead><tr><th>志望者の名前</th><th>一次面接</th><th>内定</th></tr></thead><tbody>'+
+   L.map((r,i)=>`<tr class="${r.n===hlL?'hl':''}"><td>${r.n}</td><td>${sel('l-i1-'+i,O1,r.i1,'','L|'+i+'|i1')}</td><td>${sel('l-of-'+i,O2,r.of,'','L|'+i+'|of')}</td></tr>`).join('')+'</tbody>';
+  $('#tr').innerHTML='<thead><tr><th>志望者の名前</th><th>一次面接</th><th>内定</th><th>UpdatedByFlow</th></tr></thead><tbody>'+
+   R.map((r,i)=>`<tr class="${r.n===hlR?'hl':''}"><td>${r.n}</td><td>${sel('r-i1-'+i,O1,r.i1,'','R|'+i+'|i1')}</td><td>${sel('r-of-'+i,O2,r.of,'','R|'+i+'|of')}</td><td>${sel('r-fl-'+i,OF,r.flag,r.flag==='手動変更済'?'manual':'','R|'+i+'|flag')}</td></tr>`).join('')+'</tbody>';
+  $('#side').classList.toggle('busy',running);$('#add').disabled=added>=NEW.length;$('#add-m').disabled=addedM>=NEWM.length;
+  const lg=$('#log');lg.innerHTML=logs.map(l=>l.idle?`<li class="idle">${h(l.t)}</li>`:`<li class="${l.c||''}"><b>${h(l.n)}</b><span>${h(l.t)}</span></li>`).join('');lg.scrollTop=lg.scrollHeight;
+}
+const still=matchMedia('(prefers-reduced-motion: reduce)').matches;
+function run(flowNo,head,seq,tail){
+  cur=flowNo;st={};taken={};running=true;closeTip();logs=[{n:'操作',t:head}];let i=0,prev=null;
+  const tick=()=>{
+    if(prev&&st[prev]==='on')st[prev]='done';
+    logs.forEach(l=>{if(l.c==='now')l.c=''});
+    if(i>=seq.length){running=false;hlL=hlR=null;if(tail)logs.push({n:'補足',t:tail});renderLists();renderFlow();return}
+    const s=seq[i++];st[s.id]=s.halt?'halt':'on';prev=s.id;if(s.br)taken[s.id]=s.br;hlL=s.L||null;hlR=s.R||null;if(s.fx)s.fx();
+    logs.push({n:INFO[s.id].nm,t:s.m,c:s.halt?'halt':'now'});
+    renderLists();renderFlow();
+    const el=document.querySelector('#dg .on, #dg .halt');if(el)el.scrollIntoView({block:'nearest',inline:'nearest',behavior:still?'auto':'smooth'});
+    setTimeout(tick,s.halt?500:850);
+  };tick();
+}
+function runToMaster(row,verb){
+  const t=R.find(r=>r.n===row.n),nw=!t;
+  const seq=[
+   {id:'a_trg',m:`「${row.n}」の${verb}を検知`,L:row.n},
+   {id:'a_init',m:'変数「件数」を用意'},
+   {id:'a_get',m:`候補者管理リストでタイトル「${row.n}」を検索。一致 ${nw?0:1} 件`,R:nw?null:row.n},
+   {id:'a_set',m:`件数 ＝ ${nw?0:1}`},
+   {id:'a_cond',m:nw?'0 は 1 より小さい → True':'1 は 1 より小さくない → False',br:nw?'T':'F'}];
+  if(nw)seq.push(
+   {id:'a_create',m:'候補者管理リストに項目を作成。UpdatedByFlow＝自動更新済',R:row.n,fx:()=>{R.push({...row,flag:'自動更新済'})}},
+   {id:'a_ag1',m:'他部門連携用リストの添付ファイルを取得',L:row.n},
+   {id:'a_ac1',m:'添付ファイルの中身を取得',L:row.n},
+   {id:'a_aa1',m:'候補者管理リストの項目に添付ファイルを追加',R:row.n});
+  else seq.push(
+   {id:'a_cond2',m:'候補者管理リスト側は自動更新済 → False',br:'F',R:row.n},
+   {id:'a_upd',m:'候補者管理リストの項目を上書き。UpdatedByFlow＝自動更新済',R:row.n,fx:()=>{t.i1=row.i1;t.of=row.of;t.flag='自動更新済'}},
+   {id:'a_ag2',m:'候補者管理リストの添付ファイルを取得',R:row.n},
+   {id:'a_del',m:'候補者管理リストの添付ファイルを削除',R:row.n},
+   {id:'a_ag3',m:'他部門連携用リストの添付ファイルを取得',L:row.n},
+   {id:'a_ac2',m:'添付ファイルの中身を取得',L:row.n},
+   {id:'a_aa2',m:'候補者管理リストの項目に添付ファイルを追加',R:row.n});
+  run(1,`他部門連携用リストで「${row.n}」を${verb}`,seq,'この書き込みで「マスタ⇒個別」も開始しますが、UpdatedByFlow が「自動更新済」のため、条件 2 で終了します。');
+}
+function runToDept(row,manual){
+  const t=L.find(r=>r.n===row.n);
+  const seq=[
+   {id:'b_trg',m:`「${row.n}」の変更を検知`,R:row.n},
+   {id:'b_init',m:'変数「件数」を用意'},
+   {id:'b_get',m:`他部門連携用リストでタイトル「${row.n}」を検索。一致 1 件`,L:row.n},
+   {id:'b_set',m:'件数 ＝ 1'}];
+  if(!manual)seq.push({id:'b_cond2',m:'UpdatedByFlow＝自動更新済 → False。処理なしで終了',br:'F',halt:true,R:row.n});
+  else seq.push(
+   {id:'b_cond2',m:'UpdatedByFlow＝手動変更済 → True',br:'T',R:row.n},
+   {id:'b_cond',m:'1 は 1 より小さくない → False',br:'F'},
+   {id:'b_upd',m:'他部門連携用リストの項目を上書き',L:row.n,fx:()=>{t.i1=row.i1;t.of=row.of}},
+   {id:'b_ag3',m:'他部門連携用リストの添付ファイルを取得',L:row.n},
+   {id:'b_del',m:'他部門連携用リストの添付ファイルを削除',L:row.n},
+   {id:'b_ag1',m:'候補者管理リストの添付ファイルを取得',R:row.n},
+   {id:'b_ac2',m:'添付ファイルの中身を取得',R:row.n},
+   {id:'b_aa2',m:'他部門連携用リストの項目に添付ファイルを追加',L:row.n},
+   {id:'b_upd2',m:'UpdatedByFlow を自動更新済に戻す',R:row.n,fx:()=>{row.flag='自動更新済'}});
+  run(2,manual?`候補者管理リストで「${row.n}」を「手動変更済」に変更`:`候補者管理リストで「${row.n}」を変更（UpdatedByFlow は自動更新済のまま）`,seq,
+      manual?null:'他部門連携用リストへ反映するには、UpdatedByFlow で「手動変更済」を選択します。');
+}
+$('#side').addEventListener('change',e=>{
+  const fn=e.target.dataset&&e.target.dataset.fn;if(!fn||running)return;
+  const [s,i,key]=fn.split('|'),v=e.target.value,row=(s==='L'?L:R)[+i];row[key]=v;
+  if(s==='L')runToMaster(row,'変更');
+  else if(key==='flag'){if(v==='手動変更済')runToDept(row,true);else renderLists()}
+  else runToDept(row,false);
+});
+$('#add').onclick=()=>{if(running||added>=NEW.length)return;const row={n:NEW[added++],i1:'',of:''};L.push(row);runToMaster(row,'追加')};
+$('#add-m').onclick=()=>{
+  if(running||addedM>=NEWM.length)return;const row={n:NEWM[addedM++],i1:'',of:'',flag:'手動変更済'};R.push(row);
+  run(2,`候補者管理リストに「${row.n}」を追加し、「手動変更済」を選択`,[
+   {id:'b_trg',m:`「${row.n}」の追加を検知`,R:row.n},
+   {id:'b_init',m:'変数「件数」を用意'},
+   {id:'b_get',m:`他部門連携用リストでタイトル「${row.n}」を検索。一致 0 件`},
+   {id:'b_set',m:'件数 ＝ 0'},
+   {id:'b_cond2',m:'UpdatedByFlow＝手動変更済 → True',br:'T',R:row.n},
+   {id:'b_cond',m:'0 は 1 より小さい → True',br:'T'},
+   {id:'b_cond3',m:'求人名がこのフローの担当求人と一致 → True',br:'T',R:row.n},
+   {id:'b_create',m:'他部門連携用リストに項目を作成（タイトルと申込日）',L:row.n,fx:()=>{L.push({n:row.n,i1:'',of:''})}},
+   {id:'b_upd3',m:'UpdatedByFlow を自動更新済に戻す',R:row.n,fx:()=>{row.flag='自動更新済'}}],
+   'この作成で「個別⇒マスタ」も開始します。求人名が担当求人と異なる候補者の場合は、条件 3 が False となり、何も作成しません。');
+};
+$('#go-remind').onclick=()=>{if(running)return;cur=3;st={};taken={};closeTip();renderFlow();$('#flow').scrollIntoView({behavior:still?'auto':'smooth'})};
+renderLists();renderFlow();
+</script>
+</body>
+</html>
